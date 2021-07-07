@@ -1,17 +1,19 @@
 ﻿using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 using System;
 using System.Text;
 
-namespace TestsRabbitMq.Producer
+namespace TestsRabbitMq.Consumer
 {
     class Program
     {
         static IConnection connection;
         static IModel channel;
+        static EventingBasicConsumer consumer;
 
         static void Main(string[] args)
-        {            
-            Console.WriteLine("Iniciando conexão do Producer...");
+        {
+            Console.WriteLine("Iniciando conexão do consumer...");
 
             if (!CreateConnection())
             {
@@ -20,18 +22,11 @@ namespace TestsRabbitMq.Producer
                 return;
             }
 
-            Console.WriteLine("Digite uma mensagem:");
-
-            var input = Console.ReadLine();
-
-            while (input != "quit")
-            {
-                SendMessage(input);
-
-                Console.WriteLine("Mensagem enviada! Digite outra mensagem:");                
-                input = Console.ReadLine();
-            }
-
+            Console.WriteLine("Digite qualquer tecla para sair...");
+            Console.ReadKey();
+            
+            channel.Close();            
+            connection.Close();
         }
 
         private static bool CreateConnection()
@@ -54,6 +49,11 @@ namespace TestsRabbitMq.Producer
                 channel.QueueDeclare(queue: "queue.test", durable: true, exclusive: false, autoDelete: false, arguments: null);
                 channel.QueueBind("queue.test", "exchange.test", "", null);
 
+                consumer = new EventingBasicConsumer(channel);
+                consumer.Received += Consumer_Received;
+
+                channel.BasicConsume(queue: "queue.test", autoAck: false, consumer: consumer);
+
                 return true;
             }
             catch (Exception ex)
@@ -64,25 +64,22 @@ namespace TestsRabbitMq.Producer
 
         }
 
-        private static void SendMessage(string message)
+        private static void Consumer_Received(object sender, BasicDeliverEventArgs e)
         {
             try
             {
-                var body = Encoding.UTF8.GetBytes(message);
+                var body = e.Body.ToArray();
+                var message = Encoding.UTF8.GetString(body);
 
-                var props = channel.CreateBasicProperties();
-                props.DeliveryMode = 2;
+                channel.BasicAck(e.DeliveryTag, false);
 
-                channel.BasicPublish(exchange: "exchange.test",
-                                     routingKey: "",
-                                     basicProperties: props,
-                                     body: body);
+                Console.WriteLine("Mensagem Recebida: " + message);
             }
             catch (Exception ex)
             {
-
-                throw;
+                Console.WriteLine("Erro: " + ex.Message);
             }
+        
         }
     }
 }
